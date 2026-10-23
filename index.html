@@ -1,0 +1,772 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Load any dataset, see its distribution, and run bootstrap confidence intervals, randomization tests and regression.">
+<title>Resample Lab</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Schibsted+Grotesk:wght@600;700;800&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Layout: header + tab rail; each tool = narrow controls column beside a chart stage, stacking to one column on phones */
+:root{
+  --bg:#eef1f4; --panel:#ffffff; --ink:#16202b; --muted:#566273; --line:#d3d9e1; --grid:#e7ebf0;
+  --accent:#0b7d74; --accent-soft:#dcefec; --tail:#c96f05; --tail-soft:#fbeedd; --alt:#5a4fcf; --bad:#b4332b;
+  --f-display:'Schibsted Grotesk','Segoe UI',system-ui,sans-serif;
+  --f-body:'Source Sans 3','Segoe UI',system-ui,sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,'SFMono-Regular',Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#0f141a; --panel:#161d26; --ink:#e4e9ef; --muted:#98a4b4; --line:#2b3542; --grid:#202934;
+    --accent:#3cc2b5; --accent-soft:#123330; --tail:#f2a23f; --tail-soft:#3a2a14; --alt:#a49af3; --bad:#f07a70;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0f141a; --panel:#161d26; --ink:#e4e9ef; --muted:#98a4b4; --line:#2b3542; --grid:#202934;
+  --accent:#3cc2b5; --accent-soft:#123330; --tail:#f2a23f; --tail-soft:#3a2a14; --alt:#a49af3; --bad:#f07a70;
+  color-scheme:dark;
+}
+body{background:var(--bg);color:var(--ink);font-family:var(--f-body);font-size:15px;line-height:1.5}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1,h2,h3{font-family:var(--f-display);margin:0;text-wrap:balance;letter-spacing:-.01em}
+h1{font-size:22px;font-weight:800}
+h2{font-size:16px;font-weight:700}
+h3{font-size:14px;font-weight:700}
+.top{background:var(--panel);border-bottom:1px solid var(--line)}
+.topin{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-block:16px 10px}
+.brand{display:flex;gap:12px;align-items:center;min-width:0}
+.brand svg{flex:none}
+.sub{margin:0;color:var(--muted);font-size:14px}
+.dsinfo{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:13px;color:var(--muted)}
+.dsinfo b{color:var(--ink);font-weight:600}
+.tag{font-size:11px;text-transform:uppercase;letter-spacing:.08em;font-weight:700;padding:2px 8px;border-radius:99px;background:var(--tail-soft);color:var(--tail)}
+.tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{font:600 14px var(--f-body);color:var(--muted);background:none;border:0;border-bottom:3px solid transparent;padding:10px 12px 9px;cursor:pointer;white-space:nowrap}
+.tabs button:hover{color:var(--ink)}
+.tabs button[aria-selected="true"]{color:var(--ink);border-bottom-color:var(--accent)}
+main{padding-block:20px 48px}
+.tool{display:grid;grid-template-columns:minmax(0,290px) minmax(0,1fr);gap:20px;align-items:start}
+@media (max-width:800px){.tool{grid-template-columns:minmax(0,1fr)}}
+.controls{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px;display:grid;gap:14px;min-width:0}
+.stage{display:grid;gap:16px;min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;min-width:0;display:grid;gap:10px}
+.cardhead{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.cardhead span{font-size:13px;color:var(--muted)}
+canvas{display:block;max-width:100%}
+.cv{width:100%;min-width:0}
+.hint{margin:0;font-size:13.5px;color:var(--muted)}
+.f{display:grid;gap:5px;font-size:12px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.06em}
+select,input,textarea{font:15px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 9px;width:100%;min-width:0;text-transform:none;letter-spacing:0;font-weight:400}
+textarea{font-family:var(--f-mono);font-size:12.5px;min-height:190px;resize:vertical;line-height:1.45}
+select:focus-visible,input:focus-visible,textarea:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.btn{font:600 14px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:7px;padding:7px 12px;cursor:pointer}
+.btn:hover{border-color:var(--muted)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.gen{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.gen .btn{padding:7px 4px;font-family:var(--f-mono);font-size:13px}
+.seg{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden}
+.seg button{flex:1;font:600 13px var(--f-body);background:var(--bg);color:var(--muted);border:0;padding:7px 6px;cursor:pointer}
+.seg button+button{border-left:1px solid var(--line)}
+.seg button[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink)}
+.stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(118px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin:0}
+.stat{background:var(--panel);padding:9px 12px;min-width:0}
+.stat dt{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;font-weight:700}
+.stat dd{margin:1px 0 0;font-family:var(--f-mono);font-size:16px;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.result{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:baseline;padding:12px 14px;border-radius:10px;background:var(--tail-soft);border:1px solid var(--line)}
+.result .big{font-family:var(--f-mono);font-size:20px;font-weight:600;font-variant-numeric:tabular-nums}
+.result .lab{font-size:12px;text-transform:uppercase;letter-spacing:.07em;font-weight:700;color:var(--tail)}
+.result p{margin:0;font-size:13.5px;color:var(--muted);flex-basis:100%}
+.result.calm{background:var(--accent-soft)}
+.result.calm .lab{color:var(--accent)}
+.msg{margin:0;font-size:13.5px;min-height:1.2em}
+.msg.err{color:var(--bad)}
+.msg.ok{color:var(--accent)}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table{border-collapse:collapse;font-size:13.5px;width:100%}
+th,td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap}
+th{font-weight:700;background:var(--bg)}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:inline-flex;gap:6px;align-items:center;font:600 13px var(--f-body);color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:99px;padding:4px 10px;cursor:pointer}
+.chip i{font-style:normal;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.chip.num i{color:var(--accent)}
+.chip.cat i{color:var(--alt)}
+.chip:disabled{cursor:default}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.note{font-size:12.5px;color:var(--muted);margin:0}
+.formula{font-family:var(--f-mono);font-size:15px}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+<style>body{margin:0}*,*::before,*::after{box-sizing:border-box}[hidden]{display:none!important}.foot{border-top:1px solid var(--line);color:var(--muted);font-size:13px;padding-block:16px 28px;display:flex;flex-wrap:wrap;gap:6px 16px}.foot a{color:var(--accent);font-weight:600}</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap topin">
+    <div class="brand">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true"><rect x="3" y="20" width="5" height="11" rx="1" fill="var(--accent)" opacity=".55"/><rect x="10" y="11" width="5" height="20" rx="1" fill="var(--accent)"/><rect x="17" y="6" width="5" height="25" rx="1" fill="var(--accent)"/><rect x="24" y="16" width="5" height="15" rx="1" fill="var(--tail)"/></svg>
+      <div><h1>Resample Lab</h1><p class="sub">Load any data, see its shape, and test claims by resampling.</p></div>
+    </div>
+    <div class="dsinfo" id="dsInfo"></div>
+  </div>
+  <nav class="wrap tabs" role="tablist" aria-label="Tools">
+    <button role="tab" data-tab="data" aria-selected="false">Data</button>
+    <button role="tab" data-tab="describe" aria-selected="true">Describe</button>
+    <button role="tab" data-tab="bootstrap" aria-selected="false">Bootstrap CI</button>
+    <button role="tab" data-tab="compare" aria-selected="false">Compare groups</button>
+    <button role="tab" data-tab="relate" aria-selected="false">Relationship</button>
+  </nav>
+</header>
+
+<main class="wrap">
+
+  <!-- DATA -->
+  <section id="tab-data" hidden>
+    <div class="tool">
+      <div class="controls">
+        <h2>Load data</h2>
+        <p class="hint">Upload a CSV, or copy cells straight from Excel or Google Sheets and paste them here. The first row can hold column names. A single list of numbers works too.</p>
+        <div class="row">
+          <button class="btn" id="pickFile" type="button">Upload CSV</button>
+          <input id="file" class="sr" type="file" accept=".csv,.tsv,.txt,text/csv,text/plain" tabindex="-1">
+          <button class="btn" id="loadEx" type="button">Load example</button>
+        </div>
+        <label class="f" for="paste">Data</label>
+        <textarea id="paste" spellcheck="false" placeholder="minutes,price&#10;42,85&#10;51,96&#10;..."></textarea>
+        <label class="f" for="dsName">Dataset name</label>
+        <input id="dsName" type="text" placeholder="My data">
+        <button class="btn primary" id="apply" type="button">Use this data</button>
+        <p class="msg" id="dataMsg" role="status"></p>
+      </div>
+      <div class="stage">
+        <div class="card">
+          <div class="cardhead"><h3>Columns</h3><span>Click a column to switch it between number and category.</span></div>
+          <div class="chips" id="colChips"></div>
+        </div>
+        <div class="card">
+          <div class="cardhead"><h3>Preview</h3><span id="previewNote"></span></div>
+          <div class="tablewrap" id="preview"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- DESCRIBE -->
+  <section id="tab-describe">
+    <div class="tool">
+      <div class="controls">
+        <h2>One variable</h2>
+        <label class="f" for="dCol">Variable</label>
+        <select id="dCol"></select>
+        <div class="f">View</div>
+        <div class="seg" id="dView">
+          <button type="button" data-v="dots" aria-pressed="true">Dots</button>
+          <button type="button" data-v="hist" aria-pressed="false">Histogram</button>
+          <button type="button" data-v="box" aria-pressed="false">Box</button>
+        </div>
+        <div id="binsWrap" hidden>
+          <label class="f" for="dBins">Bins: <span id="dBinsOut"></span></label>
+          <input id="dBins" type="range" min="3" max="50" value="10">
+        </div>
+        <p class="hint">Each dot is one value. The box plot marks the quartiles; points beyond 1.5 × IQR from the box are drawn as outliers.</p>
+      </div>
+      <div class="stage">
+        <div class="card"><div class="cv"><canvas id="dCv" role="img" aria-label="Distribution chart"></canvas></div></div>
+        <dl class="stats" id="dStats"></dl>
+      </div>
+    </div>
+  </section>
+
+  <!-- BOOTSTRAP -->
+  <section id="tab-bootstrap" hidden>
+    <div class="tool">
+      <div class="controls">
+        <h2>Bootstrap confidence interval</h2>
+        <label class="f" for="bCol">Variable</label>
+        <select id="bCol"></select>
+        <label class="f" for="bStat">Statistic</label>
+        <select id="bStat"><option value="mean">Mean</option><option value="median">Median</option><option value="sd">Standard deviation</option></select>
+        <div class="f">Generate samples</div>
+        <div class="gen" id="bGen"><button class="btn" data-n="1">1</button><button class="btn" data-n="10">10</button><button class="btn" data-n="100">100</button><button class="btn primary" data-n="1000">1000</button></div>
+        <button class="btn" id="bReset" type="button">Reset</button>
+        <label class="f" for="bLevel">Confidence level (%)</label>
+        <input id="bLevel" type="number" min="50" max="99.9" step="0.5" value="95">
+        <p class="hint">A bootstrap sample draws n values from your data <em>with replacement</em>, then computes the statistic. Repeat that thousands of times and the middle 95% of those results is a 95% confidence interval.</p>
+      </div>
+      <div class="stage">
+        <div class="result" id="bResult"></div>
+        <div class="card">
+          <div class="cardhead"><h3>Bootstrap distribution</h3><span id="bCount"></span></div>
+          <div class="cv"><canvas id="bCv" role="img" aria-label="Bootstrap distribution"></canvas></div>
+        </div>
+        <dl class="stats" id="bStats"></dl>
+        <div class="card">
+          <div class="cardhead"><h3 id="bSampleTitle">Original sample</h3><span id="bSampleNote"></span></div>
+          <div class="cv"><canvas id="bSampleCv" role="img" aria-label="Sample dot plot"></canvas></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- COMPARE -->
+  <section id="tab-compare" hidden>
+    <div class="tool">
+      <div class="controls">
+        <h2>Randomization test</h2>
+        <label class="f" for="cVal">Measure</label>
+        <select id="cVal"></select>
+        <label class="f" for="cGrp">Group by</label>
+        <select id="cGrp"></select>
+        <div class="row" style="flex-wrap:nowrap">
+          <div style="flex:1;min-width:0;display:grid;gap:5px"><label class="f" for="cA">Group A</label><select id="cA"></select></div>
+          <div style="flex:1;min-width:0;display:grid;gap:5px"><label class="f" for="cB">Group B</label><select id="cB"></select></div>
+        </div>
+        <label class="f" for="cStat">Statistic</label>
+        <select id="cStat"><option value="mean">Difference in means (A − B)</option><option value="median">Difference in medians (A − B)</option></select>
+        <label class="f" for="cAlt">Alternative</label>
+        <select id="cAlt"><option value="two">A ≠ B (two-sided)</option><option value="greater">A &gt; B</option><option value="less">A &lt; B</option></select>
+        <div class="f">Generate shuffles</div>
+        <div class="gen" id="cGen"><button class="btn" data-n="1">1</button><button class="btn" data-n="10">10</button><button class="btn" data-n="100">100</button><button class="btn primary" data-n="1000">1000</button></div>
+        <button class="btn" id="cReset" type="button">Reset</button>
+        <p class="hint">If the groups really didn't differ, the labels A and B would be interchangeable. Each shuffle reassigns the labels at random and recomputes the difference. The p-value is how often a shuffle beats the difference you actually observed.</p>
+      </div>
+      <div class="stage">
+        <div class="result" id="cResult"></div>
+        <div class="card">
+          <div class="cardhead"><h3>Randomization distribution</h3><span id="cCount"></span></div>
+          <div class="cv"><canvas id="cNullCv" role="img" aria-label="Randomization distribution"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="cardhead"><h3>Your data by group</h3></div>
+          <div class="cv"><canvas id="cDataCv" role="img" aria-label="Data by group"></canvas></div>
+          <div class="tablewrap" id="cTable"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- RELATE -->
+  <section id="tab-relate" hidden>
+    <div class="tool">
+      <div class="controls">
+        <h2>Two variables</h2>
+        <label class="f" for="rX">X (explanatory)</label>
+        <select id="rX"></select>
+        <label class="f" for="rY">Y (response)</label>
+        <select id="rY"></select>
+        <p class="hint">The line is the least-squares fit: the line that makes the squared vertical distances from the points as small as possible. r runs from −1 to 1 and measures how tightly the points follow a straight line.</p>
+      </div>
+      <div class="stage">
+        <div class="result calm" id="rResult"></div>
+        <div class="card"><div class="cv"><canvas id="rCv" role="img" aria-label="Scatterplot"></canvas></div></div>
+        <dl class="stats" id="rStats"></dl>
+      </div>
+    </div>
+  </section>
+</main>
+<footer class="wrap foot"><span>Built by Ayden Rigsby</span><a href="https://github.com/aydenrigsby25-glitch/resample-lab" target="_blank" rel="noopener">Source on GitHub</a><span>Inspired by StatKey from Lock5</span></footer>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const STORE='resample-lab:data';
+
+/* ---------- number helpers ---------- */
+function fmt(x){
+  if(x==null||!Number.isFinite(x)) return '—';
+  const a=Math.abs(x); const d=a>=1000?1:a>=100?2:a>=1?3:a===0?0:4;
+  let s=x.toFixed(d); if(s.includes('.')) s=s.replace(/0+$/,'').replace(/\.$/,'');
+  return s==='-0'?'0':s;
+}
+const fmtInt=x=>Math.round(x).toLocaleString('en-US');
+function minOf(a){let m=Infinity;for(const v of a)if(v<m)m=v;return m;}
+function maxOf(a){let m=-Infinity;for(const v of a)if(v>m)m=v;return m;}
+const sum=a=>{let s=0;for(const v of a)s+=v;return s;};
+const mean=a=>a.length?sum(a)/a.length:NaN;
+function sd(a){if(a.length<2)return NaN;const m=mean(a);let s=0;for(const v of a)s+=(v-m)*(v-m);return Math.sqrt(s/(a.length-1));}
+const sorted=a=>Float64Array.from(a).sort();
+function q(s,p){if(!s.length)return NaN;const h=(s.length-1)*p,lo=Math.floor(h),hi=Math.ceil(h);return s[lo]+(s[hi]-s[lo])*(h-lo);}
+const median=a=>q(sorted(a),.5);
+const STATS={mean:{label:'Mean',fn:mean},median:{label:'Median',fn:median},sd:{label:'Std. deviation',fn:sd}};
+function toNum(s){
+  if(s==null) return NaN;
+  let t=String(s).trim().replace(/[$%\s]/g,'').replace(/,(?=\d{3}(\D|$))/g,'');
+  if(t==='') return NaN; const v=Number(t); return Number.isFinite(v)?v:NaN;
+}
+function nice(lo,hi,count){
+  if(!(hi>lo)){const d=Math.abs(lo)*0.1||1;lo-=d;hi+=d;}
+  const step0=(hi-lo)/count, mag=10**Math.floor(Math.log10(step0)), e=step0/mag;
+  const step=(e>=7.5?10:e>=3.5?5:e>=1.5?2:1)*mag;
+  const a=Math.floor(lo/step)*step, b=Math.ceil(hi/step)*step, ticks=[];
+  for(let v=a;v<=b+step/2;v+=step) ticks.push(Math.abs(v)<step*1e-9?0:+v.toPrecision(12));
+  return {lo:a,hi:b,ticks};
+}
+
+/* ---------- parsing ---------- */
+function splitLine(line,delim){
+  if(delim==='ws') return line.trim().split(/\s+/);
+  const out=[];let cur='',quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(quoted){ if(ch==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else quoted=false; } else cur+=ch; }
+    else if(ch==='"') quoted=true;
+    else if(ch===delim){out.push(cur);cur='';}
+    else cur+=ch;
+  }
+  out.push(cur); return out.map(s=>s.trim());
+}
+function parseData(text,name){
+  const lines=text.replace(/\r/g,'').split('\n').filter(l=>l.trim()!=='');
+  if(!lines.length) throw new Error('There is nothing to read yet. Paste some values or upload a CSV file.');
+  const first=lines[0];
+  const delim=first.includes('\t')?'\t':first.includes(',')?',':first.includes(';')?';':'ws';
+  let rows=lines.map(l=>splitLine(l,delim));
+  if(rows.length===1&&rows[0].length>1&&rows[0].every(c=>!isNaN(toNum(c)))) rows=rows[0].map(c=>[c]);
+  const ncol=Math.max(...rows.map(r=>r.length));
+  const isNum=c=>!isNaN(toNum(c));
+  let header=false;
+  if(rows.length>1){const r0=rows[0],r1=rows[1];header=r0.every(c=>!isNum(c))||r0.some((c,j)=>!isNum(c)&&isNum(r1[j]??''));}
+  const names=[];
+  for(let j=0;j<ncol;j++){
+    let nm=header?(rows[0][j]||''):'';
+    if(!nm) nm=ncol===1?'Values':`Column ${j+1}`;
+    let base=nm,k=2; while(names.includes(nm)) nm=`${base} (${k++})`;
+    names.push(nm);
+  }
+  const body=header?rows.slice(1):rows;
+  if(!body.length) throw new Error('Only a header row was found. Add at least one row of values under the column names.');
+  const columns=names.map((nm,j)=>{
+    const raw=body.map(r=>(r[j]??'').trim()), num=raw.map(toNum);
+    const filled=raw.filter(s=>s!=='').length, nums=num.filter(v=>!isNaN(v)).length;
+    const canNum=filled>0&&nums/filled>=0.9;
+    return {name:nm,raw,num,canNum,type:canNum?'number':'category'};
+  });
+  return {name:name||'My data',n:body.length,columns};
+}
+
+/* ---------- example data (made up) ---------- */
+function exampleText(){
+  let a=20261023;
+  const rnd=()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};
+  const g=()=>{let u=0,v=0;while(!u)u=rnd();while(!v)v=rnd();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);};
+  const out=['crew,minutes,yard_sqft,price'];
+  for(let i=0;i<40;i++){
+    const crew=i%2?'Crew B':'Crew A', sq=Math.round(2200+rnd()*5200);
+    const minutes=Math.round(18+sq*0.0058+(crew==='Crew A'?0:-5)+g()*5);
+    const price=Math.round(30+sq*0.0065+g()*4);
+    out.push(`${crew},${minutes},${sq},${price}`);
+  }
+  return out.join('\n');
+}
+const EXAMPLE_NAME='Example: 40 mowing jobs';
+
+/* ---------- state ---------- */
+let DATA=null, dataId=0, isExample=false;
+let boot={key:null,stats:[],last:null};
+let rand={key:null,stats:[]};
+let current='describe';
+
+const col=n=>DATA&&DATA.columns.find(c=>c.name===n);
+const numNames=()=>DATA?DATA.columns.filter(c=>c.type==='number').map(c=>c.name):[];
+const numVals=n=>{const c=col(n);return c&&c.type==='number'?c.num.filter(v=>!isNaN(v)):[];};
+function levelsOf(c){const s=new Set();for(const v of c.raw)if(v!=='')s.add(v);return[...s];}
+const groupNames=()=>DATA?DATA.columns.filter(c=>{const k=levelsOf(c).length;return k>=2&&k<=30;}).map(c=>c.name):[];
+
+function fill(sel,names,prefer){
+  const prev=sel.value;
+  sel.innerHTML=names.length?names.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join(''):'<option value="">No suitable columns</option>';
+  const pick=[prev,prefer].find(v=>v&&names.includes(v));
+  if(pick) sel.value=pick;
+}
+function syncSelects(){
+  const nc=numNames();
+  fill($('#dCol'),nc); fill($('#bCol'),nc); fill($('#cVal'),nc);
+  fill($('#rX'),nc,nc[1]||nc[0]); fill($('#rY'),nc,nc[0]);
+  const gn=groupNames();
+  const catFirst=gn.find(n=>col(n).type==='category')||gn[0];
+  fill($('#cGrp'),gn,catFirst);
+  fillLevels();
+}
+function fillLevels(){
+  const c=col($('#cGrp').value);
+  const lv=c?levelsOf(c):[];
+  fill($('#cA'),lv,lv[0]); fill($('#cB'),lv,lv[1]);
+  if($('#cA').value===$('#cB').value&&lv.length>1) $('#cB').value=lv.find(v=>v!==$('#cA').value);
+}
+
+function setData(ds,text,example){
+  DATA=ds; dataId++; isExample=!!example;
+  boot={key:null,stats:[],last:null}; rand={key:null,stats:[]};
+  try{localStorage.setItem(STORE,JSON.stringify({name:ds.name,text,example:!!example}));}catch(e){}
+  $('#dsInfo').innerHTML=`<b>${esc(ds.name)}</b><span>${fmtInt(ds.n)} rows · ${ds.columns.length} column${ds.columns.length===1?'':'s'}</span>${example?'<span class="tag">Made-up example</span>':''}`;
+  syncSelects(); renderDataPanel(); render();
+}
+
+/* ---------- canvas helpers ---------- */
+function colors(){
+  const cs=getComputedStyle(document.documentElement),g=n=>cs.getPropertyValue(n).trim();
+  return {ink:g('--ink'),muted:g('--muted'),line:g('--line'),grid:g('--grid'),accent:g('--accent'),tail:g('--tail'),alt:g('--alt'),panel:g('--panel'),
+    mono:"12px 'JetBrains Mono', ui-monospace, Menlo, monospace", body:"600 13px 'Source Sans 3', system-ui, sans-serif"};
+}
+function setup(cv,h){
+  const w=Math.max(240,Math.floor(cv.parentElement.clientWidth));
+  const dpr=window.devicePixelRatio||1;
+  cv.width=Math.round(w*dpr); cv.height=Math.round(h*dpr); cv.style.width=w+'px'; cv.style.height=h+'px';
+  const ctx=cv.getContext('2d'); ctx.setTransform(dpr,0,0,dpr,0,0); ctx.clearRect(0,0,w,h);
+  return {ctx,w,h};
+}
+function emptyMsg(ctx,w,h,c,msg){
+  ctx.fillStyle=c.muted; ctx.font="15px 'Source Sans 3', system-ui, sans-serif"; ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(msg,w/2,h/2);
+}
+function xAxis(ctx,sx,ticks,y,L,R,c,label){
+  ctx.strokeStyle=c.line; ctx.lineWidth=1; ctx.setLineDash([]);
+  ctx.beginPath(); ctx.moveTo(L,y+.5); ctx.lineTo(R,y+.5); ctx.stroke();
+  ctx.fillStyle=c.muted; ctx.font=c.mono; ctx.textAlign='center'; ctx.textBaseline='top';
+  for(const t of ticks){const x=Math.round(sx(t))+.5; ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+5); ctx.stroke(); ctx.fillText(fmt(t),x,y+8);}
+  if(label){ctx.font=c.body; ctx.fillStyle=c.ink; ctx.fillText(label,(L+R)/2,y+26);}
+}
+function drawMarks(ctx,marks,sx,T,B,w,c){
+  for(const m of marks||[]){
+    if(!Number.isFinite(m.v)) continue;
+    const x=Math.round(sx(m.v))+.5;
+    ctx.strokeStyle=m.color; ctx.lineWidth=m.width||1.5; ctx.setLineDash(m.dash?[5,4]:[]);
+    ctx.beginPath(); ctx.moveTo(x,T-4); ctx.lineTo(x,B); ctx.stroke(); ctx.setLineDash([]);
+    if(m.label){
+      ctx.font="600 12px 'JetBrains Mono', ui-monospace, monospace"; ctx.fillStyle=m.color; ctx.textBaseline='bottom';
+      const tw=ctx.measureText(m.label).width; let tx=x-tw/2; tx=Math.max(4,Math.min(w-4-tw,tx));
+      ctx.textAlign='left'; ctx.fillText(m.label,tx,T-6);
+    }
+  }
+}
+function dotsIn(ctx,vals,sx,L,top,bot,color,tail,tailColor){
+  const n=vals.length, d=n>2000?3:n>600?4:n>200?6:n>60?8:10;
+  const bins=new Map(), pts=[];
+  for(const v of vals){const b=Math.round((sx(v)-L)/d), k=bins.get(b)||0; bins.set(b,k+1); pts.push(b,k,v);}
+  let maxS=1; bins.forEach(v=>{if(v>maxS)maxS=v;});
+  const dy=Math.min(d,(bot-top-4)/maxS), r=Math.max(0.9,Math.min(d,dy)/2-0.4);
+  for(let i=0;i<pts.length;i+=3){
+    ctx.fillStyle=tail&&tail(pts[i+2])?tailColor:color;
+    ctx.beginPath(); ctx.arc(L+pts[i]*d,bot-2-dy*(pts[i+1]+.5),r,0,Math.PI*2); ctx.fill();
+  }
+}
+function boxIn(ctx,vals,sx,top,bot,color,c){
+  const s=sorted(vals), q1=q(s,.25), m=q(s,.5), q3=q(s,.75), iqr=q3-q1, lf=q1-1.5*iqr, hf=q3+1.5*iqr;
+  let wl=s[0],wh=s[s.length-1];
+  for(const v of s){if(v>=lf){wl=v;break;}}
+  for(let i=s.length-1;i>=0;i--){if(s[i]<=hf){wh=s[i];break;}}
+  const cy=(top+bot)/2, bh=Math.min(54,(bot-top)*.55);
+  ctx.strokeStyle=c.ink; ctx.lineWidth=1.5;
+  ctx.beginPath(); ctx.moveTo(sx(wl),cy); ctx.lineTo(sx(q1),cy); ctx.moveTo(sx(q3),cy); ctx.lineTo(sx(wh),cy);
+  ctx.moveTo(sx(wl),cy-bh/4); ctx.lineTo(sx(wl),cy+bh/4); ctx.moveTo(sx(wh),cy-bh/4); ctx.lineTo(sx(wh),cy+bh/4); ctx.stroke();
+  ctx.globalAlpha=.2; ctx.fillStyle=color; ctx.fillRect(sx(q1),cy-bh/2,Math.max(1,sx(q3)-sx(q1)),bh); ctx.globalAlpha=1;
+  ctx.strokeStyle=color; ctx.lineWidth=2; ctx.strokeRect(sx(q1),cy-bh/2,Math.max(1,sx(q3)-sx(q1)),bh);
+  ctx.strokeStyle=c.ink; ctx.lineWidth=3; ctx.beginPath(); ctx.moveTo(sx(m),cy-bh/2); ctx.lineTo(sx(m),cy+bh/2); ctx.stroke();
+  ctx.fillStyle=c.tail;
+  for(const v of s){if(v<lf||v>hf){ctx.beginPath(); ctx.arc(sx(v),cy,3.5,0,Math.PI*2); ctx.fill();}}
+}
+function rowsChart(cv,rows,kind,opt={}){
+  const h=opt.h||(rows.length>1?100*rows.length+70:300);
+  const {ctx,w}=setup(cv,h), c=colors();
+  const all=rows.flatMap(r=>r.vals);
+  if(!all.length) return emptyMsg(ctx,w,h,c,opt.empty||'No numeric values to plot');
+  ctx.font=c.body;
+  const lw=rows.some(r=>r.label)?Math.min(150,maxOf(rows.map(r=>ctx.measureText(r.label||'').width))+16):0;
+  const marks=opt.marks||[], L=16+lw, R=w-18, T=marks.some(m=>m.label)?30:12, B=h-(opt.xlabel?50:34);
+  const extra=marks.map(m=>m.v).filter(Number.isFinite);
+  const nx=nice(Math.min(minOf(all),...extra),Math.max(maxOf(all),...extra),w<480?4:7);
+  const sx=v=>L+(v-nx.lo)/(nx.hi-nx.lo)*(R-L);
+  const band=(B-T)/rows.length;
+  rows.forEach((r,i)=>{
+    const top=T+band*i, bot=top+band;
+    if(i>0){ctx.strokeStyle=c.grid; ctx.lineWidth=1; ctx.beginPath(); ctx.moveTo(16,Math.round(top)+.5); ctx.lineTo(R,Math.round(top)+.5); ctx.stroke();}
+    if(r.label){ctx.fillStyle=r.color||c.ink; ctx.font=c.body; ctx.textAlign='left'; ctx.textBaseline='middle'; ctx.fillText(r.label,16,(top+bot)/2);}
+    if(!r.vals.length) return;
+    if(kind==='box') boxIn(ctx,r.vals,sx,top,bot,r.color||c.accent,c);
+    else dotsIn(ctx,r.vals,sx,L,top,bot,r.color||c.accent,opt.tail,c.tail);
+  });
+  xAxis(ctx,sx,nx.ticks,B,L,R,c,opt.xlabel);
+  drawMarks(ctx,marks,sx,T,B,w,c);
+}
+function histChart(cv,vals,opt={}){
+  const h=opt.h||300, {ctx,w}=setup(cv,h), c=colors();
+  if(!vals.length) return emptyMsg(ctx,w,h,c,opt.empty||'No numeric values to plot');
+  const marks=opt.marks||[], L=48, R=w-18, T=marks.some(m=>m.label)?30:14, B=h-(opt.xlabel?50:34);
+  const lo=minOf(vals), hi=maxOf(vals), extra=marks.map(m=>m.v).filter(Number.isFinite);
+  const nx=nice(Math.min(lo,...extra),Math.max(hi,...extra),w<480?4:7);
+  const sx=v=>L+(v-nx.lo)/(nx.hi-nx.lo)*(R-L);
+  const k=opt.bins||Math.min(60,Math.max(8,Math.round(Math.sqrt(vals.length)*1.3)));
+  const span=(hi-lo)||1, bw=span/k, inC=new Array(k).fill(0), tC=new Array(k).fill(0);
+  for(const v of vals){let i=Math.floor((v-lo)/bw); if(i>=k)i=k-1; if(i<0)i=0; if(opt.tail&&opt.tail(v)) tC[i]++; else inC[i]++;}
+  let maxC=1; for(let i=0;i<k;i++) maxC=Math.max(maxC,inC[i]+tC[i]);
+  const ny=nice(0,maxC,4), sy=v=>B-(v/ny.hi)*(B-T);
+  ctx.font=c.mono; ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.lineWidth=1;
+  for(const t of ny.ticks){ if(t!==Math.round(t)) continue; const y=Math.round(sy(t))+.5; ctx.strokeStyle=c.grid; ctx.beginPath(); ctx.moveTo(L,y); ctx.lineTo(R,y); ctx.stroke(); ctx.fillStyle=c.muted; ctx.fillText(fmtInt(t),L-6,y); }
+  const x0b=lo===hi?lo-.5:lo, bwb=lo===hi?1/k:bw;
+  for(let i=0;i<k;i++){
+    const x0=sx(x0b+i*bwb), x1=sx(x0b+(i+1)*bwb), gap=(x1-x0)>5?1:0, bwPx=Math.max(1,x1-x0-gap*2);
+    const yIn=sy(inC[i]), yT=sy(inC[i]+tC[i]);
+    ctx.fillStyle=c.accent; ctx.fillRect(x0+gap,yIn,bwPx,B-yIn);
+    if(tC[i]){ctx.fillStyle=c.tail; ctx.fillRect(x0+gap,yT,bwPx,yIn-yT);}
+  }
+  xAxis(ctx,sx,nx.ticks,B,L,R,c,opt.xlabel);
+  drawMarks(ctx,marks,sx,T,B,w,c);
+}
+function scatterChart(cv,xs,ys,fit,xl,yl){
+  const h=360, {ctx,w}=setup(cv,h), c=colors();
+  if(xs.length<2) return emptyMsg(ctx,w,h,c,'Need at least 2 rows with both values');
+  const nx=nice(minOf(xs),maxOf(xs),w<480?4:6), ny=nice(minOf(ys),maxOf(ys),5);
+  ctx.font=c.mono;
+  const yw=maxOf(ny.ticks.map(t=>ctx.measureText(fmt(t)).width));
+  const L=Math.max(44,yw+22), R=w-18, T=14, B=h-52;
+  const sx=v=>L+(v-nx.lo)/(nx.hi-nx.lo)*(R-L), sy=v=>B-(v-ny.lo)/(ny.hi-ny.lo)*(B-T);
+  ctx.textAlign='right'; ctx.textBaseline='middle'; ctx.lineWidth=1;
+  for(const t of ny.ticks){const y=Math.round(sy(t))+.5; ctx.strokeStyle=c.grid; ctx.beginPath(); ctx.moveTo(L,y); ctx.lineTo(R,y); ctx.stroke(); ctx.fillStyle=c.muted; ctx.fillText(fmt(t),L-8,y);}
+  ctx.globalAlpha=.85; ctx.fillStyle=c.accent;
+  for(let i=0;i<xs.length;i++){ctx.beginPath(); ctx.arc(sx(xs[i]),sy(ys[i]),xs.length>500?2.5:4.5,0,Math.PI*2); ctx.fill();}
+  ctx.globalAlpha=1;
+  if(fit&&Number.isFinite(fit.b1)){
+    ctx.save(); ctx.beginPath(); ctx.rect(L,T,R-L,B-T); ctx.clip();
+    ctx.strokeStyle=c.tail; ctx.lineWidth=2.5; ctx.beginPath();
+    ctx.moveTo(sx(nx.lo),sy(fit.b0+fit.b1*nx.lo)); ctx.lineTo(sx(nx.hi),sy(fit.b0+fit.b1*nx.hi)); ctx.stroke(); ctx.restore();
+  }
+  xAxis(ctx,sx,nx.ticks,B,L,R,c,xl);
+  ctx.save(); ctx.translate(14,(T+B)/2); ctx.rotate(-Math.PI/2); ctx.font=c.body; ctx.fillStyle=c.ink; ctx.textAlign='center'; ctx.textBaseline='middle'; ctx.fillText(yl,0,0); ctx.restore();
+}
+function statGrid(el,items){el.innerHTML=items.map(([k,v])=>`<div class="stat"><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join('');}
+
+/* ---------- DATA panel ---------- */
+function renderDataPanel(){
+  if(!DATA) return;
+  $('#colChips').innerHTML=DATA.columns.map((c,i)=>`<button type="button" class="chip ${c.type==='number'?'num':'cat'}" data-i="${i}" ${c.canNum?'':'disabled'} title="${c.canNum?'Click to switch type':'Text values: category only'}">${esc(c.name)} <i>${c.type==='number'?'number':'category'}</i></button>`).join('');
+  const rows=Math.min(DATA.n,12);
+  let html='<table><thead><tr><th class="n">#</th>'+DATA.columns.map(c=>`<th class="${c.type==='number'?'n':''}">${esc(c.name)}</th>`).join('')+'</tr></thead><tbody>';
+  for(let i=0;i<rows;i++) html+=`<tr><td class="n">${i+1}</td>`+DATA.columns.map(c=>`<td class="${c.type==='number'?'n':''}">${esc(c.raw[i]||'')}</td>`).join('')+'</tr>';
+  $('#preview').innerHTML=html+'</tbody></table>';
+  $('#previewNote').textContent=DATA.n>rows?`First ${rows} of ${fmtInt(DATA.n)} rows`:`${fmtInt(DATA.n)} rows`;
+}
+$('#colChips').addEventListener('click',e=>{
+  const b=e.target.closest('.chip'); if(!b||b.disabled) return;
+  const c=DATA.columns[+b.dataset.i]; c.type=c.type==='number'?'category':'number';
+  dataId++; boot.key=null; rand.key=null; syncSelects(); renderDataPanel(); render();
+});
+function applyText(text,name,example){
+  const msg=$('#dataMsg');
+  try{
+    const ds=parseData(text,name);
+    setData(ds,text,example);
+    const nn=ds.columns.filter(c=>c.type==='number').length;
+    msg.className='msg ok';
+    msg.textContent=`Loaded ${fmtInt(ds.n)} rows: ${nn} number column${nn===1?'':'s'}, ${ds.columns.length-nn} category column${ds.columns.length-nn===1?'':'s'}.`;
+  }catch(err){msg.className='msg err'; msg.textContent=err.message;}
+}
+$('#apply').addEventListener('click',()=>applyText($('#paste').value,$('#dsName').value.trim(),false));
+$('#loadEx').addEventListener('click',()=>{const t=exampleText(); $('#paste').value=t; $('#dsName').value=EXAMPLE_NAME; applyText(t,EXAMPLE_NAME,true);});
+$('#pickFile').addEventListener('click',()=>$('#file').click());
+$('#file').addEventListener('change',e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{const t=String(r.result); const nm=f.name.replace(/\.[^.]+$/,''); $('#paste').value=t.length>400000?t.slice(0,400000):t; $('#dsName').value=nm; applyText(t,nm,false);};
+  r.onerror=()=>{$('#dataMsg').className='msg err'; $('#dataMsg').textContent='That file could not be read. Try saving it as a .csv and uploading again.';};
+  r.readAsText(f); e.target.value='';
+});
+
+/* ---------- DESCRIBE ---------- */
+let dView='dots';
+$('#dView').addEventListener('click',e=>{const b=e.target.closest('button'); if(!b) return; dView=b.dataset.v; $$('#dView button').forEach(x=>x.setAttribute('aria-pressed',x===b)); renderDescribe();});
+$('#dCol').addEventListener('change',renderDescribe);
+$('#dBins').addEventListener('input',renderDescribe);
+function renderDescribe(){
+  const name=$('#dCol').value, v=numVals(name);
+  $('#binsWrap').hidden=dView!=='hist'; $('#dBinsOut').textContent=$('#dBins').value;
+  const cv=$('#dCv');
+  if(dView==='hist') histChart(cv,v,{bins:+$('#dBins').value,xlabel:name,empty:'Load data with a number column to begin'});
+  else rowsChart(cv,[{vals:v}],dView==='box'?'box':'dots',{xlabel:name,empty:'Load data with a number column to begin'});
+  if(!v.length){statGrid($('#dStats'),[]);return;}
+  const s=sorted(v), q1=q(s,.25), q3=q(s,.75);
+  statGrid($('#dStats'),[['n',fmtInt(v.length)],['Mean',fmt(mean(v))],['Std. dev.',fmt(sd(v))],['Min',fmt(s[0])],['Q1',fmt(q1)],['Median',fmt(q(s,.5))],['Q3',fmt(q3)],['Max',fmt(s[s.length-1])],['IQR',fmt(q3-q1)],['Range',fmt(s[s.length-1]-s[0])]]);
+}
+
+/* ---------- BOOTSTRAP ---------- */
+function bootKey(){return [dataId,$('#bCol').value,$('#bStat').value].join('|');}
+$('#bGen').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  const v=numVals($('#bCol').value); if(v.length<2) return;
+  if(boot.key!==bootKey()) boot={key:bootKey(),stats:[],last:null};
+  const k=Math.min(+b.dataset.n,100000-boot.stats.length), f=STATS[$('#bStat').value].fn, n=v.length;
+  let last=null;
+  for(let t=0;t<k;t++){const s=new Array(n); for(let j=0;j<n;j++) s[j]=v[(Math.random()*n)|0]; boot.stats.push(f(s)); last=s;}
+  if(last) boot.last=last;
+  renderBoot();
+});
+$('#bReset').addEventListener('click',()=>{boot={key:bootKey(),stats:[],last:null}; renderBoot();});
+['#bCol','#bStat'].forEach(s=>$(s).addEventListener('change',renderBoot));
+$('#bLevel').addEventListener('input',renderBoot);
+function renderBoot(){
+  const name=$('#bCol').value, st=$('#bStat').value, S=STATS[st], v=numVals(name);
+  if(boot.key!==bootKey()) boot={key:bootKey(),stats:[],last:null};
+  const c=colors(), orig=v.length?S.fn(v):NaN, ok=v.length>=2;
+  $$('#bGen button').forEach(b=>b.disabled=!ok||boot.stats.length>=100000);
+  const sample=boot.last||v;
+  $('#bSampleTitle').textContent=boot.last?'Latest bootstrap sample':'Original sample';
+  $('#bSampleNote').textContent=v.length?`n = ${fmtInt(v.length)} · ${S.label.toLowerCase()} = ${fmt(S.fn(sample))}`:'';
+  rowsChart($('#bSampleCv'),[{vals:sample}],'dots',{h:150,empty:'Load data with a number column to begin',marks:[{v:S.fn(sample),color:c.ink,dash:true,width:1.5}]});
+  const s=boot.stats;
+  let level=+$('#bLevel').value; if(!(level>=50&&level<100)) level=95;
+  $('#bCount').textContent=s.length?`${fmtInt(s.length)} bootstrap ${S.label.toLowerCase()}s`:'';
+  const res=$('#bResult');
+  if(!s.length){
+    histChart($('#bCv'),[],{empty:ok?'Press Generate to build the distribution':'Load data with a number column to begin'});
+    res.className='result calm';
+    res.innerHTML=`<span class="lab">Original sample</span><span class="big">${S.label} = ${fmt(orig)}</span><p>Generate 1000 samples to estimate a confidence interval for the ${S.label.toLowerCase()} of ${esc(name||'your variable')}.</p>`;
+    statGrid($('#bStats'),[]); return;
+  }
+  const ss=sorted(s), a=(1-level/100)/2, lo=q(ss,a), hi=q(ss,1-a), tail=x=>x<lo||x>hi;
+  const marks=s.length>=20?[{v:lo,color:c.tail,label:fmt(lo)},{v:hi,color:c.tail,label:fmt(hi)},{v:orig,color:c.ink,dash:true}]:[{v:orig,color:c.ink,dash:true}];
+  const tf=s.length>=20?tail:null;
+  if(s.length<=2500) rowsChart($('#bCv'),[{vals:s}],'dots',{h:300,tail:tf,marks,xlabel:`Bootstrap ${S.label.toLowerCase()}`});
+  else histChart($('#bCv'),s,{h:300,tail:tf,marks,xlabel:`Bootstrap ${S.label.toLowerCase()}`});
+  res.className='result';
+  if(s.length>=20){
+    res.innerHTML=`<span class="lab">${fmt(level)}% confidence interval</span><span class="big">(${fmt(lo)}, ${fmt(hi)})</span><p>We can be ${fmt(level)}% confident the true ${S.label.toLowerCase()} of ${esc(name)} is between ${fmt(lo)} and ${fmt(hi)}.${s.length<1000?' Generate at least 1,000 samples for a stable interval.':''}</p>`;
+  }else{
+    res.className='result calm';
+    res.innerHTML=`<span class="lab">Keep going</span><span class="big">${fmtInt(s.length)} sample${s.length===1?'':'s'}</span><p>The interval appears once there are at least 20 samples. Use 1,000 or more for a reliable one.</p>`;
+  }
+  statGrid($('#bStats'),[['Samples',fmtInt(s.length)],[`Original ${st==='sd'?'SD':S.label.toLowerCase()}`,fmt(orig)],['Bootstrap mean',fmt(mean(s))],['Std. error',fmt(sd(s))],['Lower bound',s.length>=20?fmt(lo):'—'],['Upper bound',s.length>=20?fmt(hi):'—']]);
+}
+
+/* ---------- COMPARE ---------- */
+function cState(){
+  const vc=col($('#cVal').value), gc=col($('#cGrp').value), A=$('#cA').value, B=$('#cB').value;
+  const a=[],b=[];
+  if(vc&&gc&&vc.type==='number') for(let i=0;i<DATA.n;i++){const v=vc.num[i]; if(isNaN(v)) continue; const g=gc.raw[i]; if(g===A)a.push(v); else if(g===B)b.push(v);}
+  return {a,b,A,B,ok:a.length>=2&&b.length>=2&&A!==B,measure:$('#cVal').value,same:A===B};
+}
+const cKey=()=>[dataId,$('#cVal').value,$('#cGrp').value,$('#cA').value,$('#cB').value,$('#cStat').value].join('|');
+$('#cGrp').addEventListener('change',()=>{fillLevels(); renderCompare();});
+['#cVal','#cA','#cB','#cStat','#cAlt'].forEach(s=>$(s).addEventListener('change',renderCompare));
+$('#cReset').addEventListener('click',()=>{rand={key:cKey(),stats:[]}; renderCompare();});
+$('#cGen').addEventListener('click',e=>{
+  const btn=e.target.closest('button'); if(!btn) return;
+  const st=cState(); if(!st.ok) return;
+  if(rand.key!==cKey()) rand={key:cKey(),stats:[]};
+  const f=STATS[$('#cStat').value].fn, arr=st.a.concat(st.b), n1=st.a.length, N=arr.length;
+  const k=Math.min(+btn.dataset.n,100000-rand.stats.length);
+  for(let t=0;t<k;t++){
+    for(let i=N-1;i>0;i--){const j=(Math.random()*(i+1))|0, tmp=arr[i]; arr[i]=arr[j]; arr[j]=tmp;}
+    rand.stats.push(f(arr.slice(0,n1))-f(arr.slice(n1)));
+  }
+  renderCompare();
+});
+function renderCompare(){
+  if(rand.key!==cKey()) rand={key:cKey(),stats:[]};
+  const st=cState(), c=colors(), statK=$('#cStat').value, f=STATS[statK].fn, alt=$('#cAlt').value;
+  $$('#cGen button').forEach(b=>b.disabled=!st.ok);
+  rowsChart($('#cDataCv'),[{label:st.A||'A',vals:st.a,color:c.accent},{label:st.B||'B',vals:st.b,color:c.alt}],'dots',{h:230,xlabel:st.measure,empty:'Pick a measure and a column with groups'});
+  const rows=[[st.A,st.a],[st.B,st.b]].filter(r=>r[0]);
+  $('#cTable').innerHTML=st.a.length||st.b.length?`<table><thead><tr><th>Group</th><th class="n">n</th><th class="n">Mean</th><th class="n">Median</th><th class="n">Std. dev.</th></tr></thead><tbody>${rows.map(([g,v])=>`<tr><td>${esc(g)}</td><td class="n">${fmtInt(v.length)}</td><td class="n">${fmt(mean(v))}</td><td class="n">${fmt(median(v))}</td><td class="n">${fmt(sd(v))}</td></tr>`).join('')}</tbody></table>`:'';
+  const res=$('#cResult');
+  if(!st.ok){
+    histChart($('#cNullCv'),[],{empty:'Choose two different groups with at least 2 values each'});
+    res.className='result calm';
+    res.innerHTML=`<span class="lab">Set up the test</span><span class="big">—</span><p>${st.same?'Group A and Group B are the same. Pick two different groups.':'Choose a number column to measure and a column that splits the rows into groups.'}</p>`;
+    $('#cCount').textContent=''; return;
+  }
+  const obs=f(st.a)-f(st.b), s=rand.stats, eps=1e-9*Math.max(1,Math.abs(obs));
+  const statName=statK==='mean'?'means':'medians';
+  if(!s.length){
+    histChart($('#cNullCv'),[],{empty:'Press Generate to shuffle the group labels'});
+    res.className='result calm';
+    res.innerHTML=`<span class="lab">Observed difference in ${statName}</span><span class="big">${fmt(obs)}</span><p>${esc(st.A)} − ${esc(st.B)}. Generate 1,000 shuffles to see whether a gap this size could easily happen by chance.</p>`;
+    $('#cCount').textContent=''; return;
+  }
+  const tail=alt==='two'?(x=>Math.abs(x)>=Math.abs(obs)-eps):alt==='greater'?(x=>x>=obs-eps):(x=>x<=obs+eps);
+  let cnt=0; for(const x of s) if(tail(x)) cnt++;
+  const p=cnt/s.length;
+  const marks=[{v:obs,color:c.tail,label:`observed ${fmt(obs)}`}];
+  if(alt==='two'&&Math.abs(obs)>eps) marks.push({v:-obs,color:c.tail,dash:true});
+  const xl=`Shuffled difference in ${statName} (A − B)`;
+  if(s.length<=2500) rowsChart($('#cNullCv'),[{vals:s}],'dots',{h:300,tail,marks,xlabel:xl});
+  else histChart($('#cNullCv'),s,{h:300,tail,marks,xlabel:xl});
+  $('#cCount').textContent=`${fmtInt(s.length)} shuffles`;
+  const pTxt=cnt===0?`< ${fmt(1/s.length)}`:(p<0.001?p.toFixed(4):p.toFixed(3));
+  const strong=p<0.05;
+  res.className=strong?'result':'result calm';
+  res.innerHTML=`<span class="lab">p-value</span><span class="big">${pTxt}</span><span class="formula">observed ${esc(st.A)} − ${esc(st.B)} = ${fmt(obs)}</span><p>${fmtInt(cnt)} of ${fmtInt(s.length)} shuffles were as extreme as the real difference. ${strong?'That is rare (below 0.05), so chance alone is a poor explanation for the gap between the groups.':'That happens often enough that random variation could explain the gap.'}${s.length<1000?' Use 1,000 or more shuffles before trusting this.':''}</p>`;
+}
+
+/* ---------- RELATIONSHIP ---------- */
+['#rX','#rY'].forEach(s=>$(s).addEventListener('change',renderRelate));
+function renderRelate(){
+  const xn=$('#rX').value, yn=$('#rY').value, xc=col(xn), yc=col(yn), xs=[], ys=[];
+  if(xc&&yc&&xc.type==='number'&&yc.type==='number') for(let i=0;i<DATA.n;i++){const x=xc.num[i],y=yc.num[i]; if(!isNaN(x)&&!isNaN(y)){xs.push(x);ys.push(y);}}
+  const n=xs.length, res=$('#rResult');
+  let fit=null;
+  if(n>=3){
+    const mx=mean(xs), my=mean(ys); let sxx=0,syy=0,sxy=0;
+    for(let i=0;i<n;i++){const dx=xs[i]-mx, dy=ys[i]-my; sxx+=dx*dx; syy+=dy*dy; sxy+=dx*dy;}
+    const r=sxx&&syy?sxy/Math.sqrt(sxx*syy):NaN, b1=sxx?sxy/sxx:NaN, b0=my-b1*mx;
+    fit={r,b1,b0};
+  }
+  scatterChart($('#rCv'),xs,ys,fit,xn||'X',yn||'Y');
+  if(!fit){
+    res.innerHTML=`<span class="lab">Pick two number columns</span><span class="big">—</span><p>You need at least 3 rows with values in both columns.</p>`;
+    statGrid($('#rStats'),[]); return;
+  }
+  const {r,b1,b0}=fit, ar=Math.abs(r);
+  const strength=!Number.isFinite(r)?'undefined':ar>=.8?'strong':ar>=.5?'moderate':ar>=.3?'weak':'very weak';
+  const dir=r>0?'positive':'negative';
+  res.innerHTML=`<span class="lab">Least-squares line</span><span class="big">ŷ = ${fmt(b0)} ${b1<0?'−':'+'} ${fmt(Math.abs(b1))}·x</span><p>A ${strength} ${dir} relationship (r = ${fmt(r)}). Each 1-unit increase in ${esc(xn)} goes with an average change of ${fmt(b1)} in ${esc(yn)}. Correlation alone does not show that one causes the other.</p>`;
+  statGrid($('#rStats'),[['n',fmtInt(n)],['Correlation r',fmt(r)],['r²',fmt(r*r)],['Slope',fmt(b1)],['Intercept',fmt(b0)]]);
+}
+
+/* ---------- tabs & lifecycle ---------- */
+const TABS=['data','describe','bootstrap','compare','relate'];
+function showTab(t){
+  if(!TABS.includes(t)) t='describe';
+  current=t;
+  $$('[role=tab]').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
+  TABS.forEach(x=>{$('#tab-'+x).hidden=x!==t;});
+  try{history.replaceState(null,'','#'+t);}catch(e){}
+  render();
+}
+$$('[role=tab]').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
+function render(){
+  if(!DATA) return;
+  if(current==='describe') renderDescribe();
+  else if(current==='bootstrap') renderBoot();
+  else if(current==='compare') renderCompare();
+  else if(current==='relate') renderRelate();
+}
+let rt=null;
+window.addEventListener('resize',()=>{clearTimeout(rt); rt=setTimeout(render,120);});
+try{window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',render);}catch(e){}
+new MutationObserver(render).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});
+
+/* boot */
+let saved=null;
+try{saved=JSON.parse(localStorage.getItem(STORE)||'null');}catch(e){}
+let loaded=false;
+if(saved&&saved.text){
+  try{const ds=parseData(saved.text,saved.name); $('#paste').value=saved.text; $('#dsName').value=saved.name||''; setData(ds,saved.text,saved.example); loaded=true;}catch(e){}
+}
+if(!loaded){const t=exampleText(); $('#paste').value=t; $('#dsName').value=EXAMPLE_NAME; setData(parseData(t,EXAMPLE_NAME),t,true);}
+const h=(location.hash||'').replace('#','');
+showTab(TABS.includes(h)?h:'describe');
+if(document.fonts&&document.fonts.ready) document.fonts.ready.then(render);
+})();
+</script>
+
+</body>
+</html>
